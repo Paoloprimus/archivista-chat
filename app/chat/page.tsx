@@ -28,7 +28,15 @@ export default function ChatPage() {
       const { done, value } = await reader.read();
       if (done) break;
       assistant += new TextDecoder().decode(value);
-      setMsgs(m => [...m.filter(x => x.role !== 'assistant'), { role: 'assistant', content: assistant }]);
+      setMsgs(m => {
+    const last = m[m.length - 1];
+    if (last?.role === 'assistant') {
+      return [...m.slice(0, -1), { role: 'assistant', content: assistant }];
+    } else {
+      return [...m, { role: 'assistant', content: assistant }];
+    }
+  });
+
     }
   }
 
