@@ -1,15 +1,12 @@
 export const runtime = 'edge';
 
 import { NextRequest } from 'next/server';
-import { createSupabaseClient } from '../../../lib/supabase';
-import { StreamingTextResponse } from 'ai/respond';
 import Anthropic from '@anthropic-ai/sdk';
+import { createSupabaseClient } from '../../../lib/supabase';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
-
-const HARD_LIMIT = 128_000;
 
 export async function POST(req: NextRequest) {
   const { text, session_id } = await req.json();
@@ -22,23 +19,19 @@ export async function POST(req: NextRequest) {
     .order('created_at', { ascending: true });
 
   const prompt = [...history, { role: 'user', content: text }];
-  const tokens = prompt.reduce((n, m) => n + Math.ceil(m.content.length / 4), 0);
-  if (tokens > HARD_LIMIT) {
-    return new Response('Prompt troppo lungo per il modello Claude', { status: 400 });
-  }
+  const systemPrompt = "Sei Archivista AI. Hai memoria persistente. Ricorda sempre tutto finché la sessione lo permette.";
 
-  const systemPrompt = "Sei un assistente AI chiamato Archivista AI, con memoria persistente fino a 200.000 token.";
   const stream = await anthropic.messages.stream({
     model: 'claude-3-sonnet-20240229',
     max_tokens: 4096,
     system: systemPrompt,
     messages: prompt.map((m) => ({
-      role: m.role === 'user' ? 'user' : 'assistant',
-      content: m.content
+      role: m.role,
+      content: m.content,
     })),
   });
 
-  // Salvataggio async su Supabase
+  // Salvataggio asincrono nel DB
   (async () => {
     await supabase.from('messages').insert([
       { session_id, role: 'user', content: text },
@@ -58,7 +51,7 @@ export async function POST(req: NextRequest) {
       .match({ session_id, role: 'assistant', content: '' });
   })();
 
-  // stream risposta a frontend
+  // Risposta in streaming al client
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
@@ -68,8 +61,13 @@ export async function POST(req: NextRequest) {
         }
       }
       controller.close();
-    }
+    },
   });
 
-  return new StreamingTextResponse(readable);
+  return new Response(readable, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Transfer-Encoding': 'chunked',
+    },
+  });
 }
