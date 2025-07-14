@@ -32,15 +32,13 @@ export async function POST(req: NextRequest) {
     })),
   });
 
-  // Salvataggio asincrono nel DB con log dettagliato
+  // Salvataggio asincrono nel DB
   (async () => {
     try {
-      const { error: insertError } = await supabase.from('messages').insert([
+      const { error: userError } = await supabase.from('messages').insert([
         { session_id, role: 'user', content: text },
-        { session_id, role: 'assistant', content: '' },
       ]);
-
-      if (insertError) throw insertError;
+      if (userError) throw userError;
 
       let output = '';
       for await (const chunk of stream) {
@@ -49,12 +47,10 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const { error: updateError } = await supabase
-        .from('messages')
-        .update({ content: output })
-        .match({ session_id, role: 'assistant', content: '' });
-
-      if (updateError) throw updateError;
+      const { error: assistantError } = await supabase.from('messages').insert([
+        { session_id, role: 'assistant', content: output },
+      ]);
+      if (assistantError) throw assistantError;
 
     } catch (err) {
       console.error('Errore inserimento messaggi:', err);
