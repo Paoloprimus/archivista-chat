@@ -5,14 +5,14 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createSupabaseClient } from '../../../lib/supabase';
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
 export async function POST(req: NextRequest) {
   const { text, session_id } = await req.json();
   const supabase = createSupabaseClient();
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('messages')
     .select('role, content')
     .eq('session_id', session_id)
@@ -26,40 +26,33 @@ export async function POST(req: NextRequest) {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
     system: systemPrompt,
-    messages: prompt.map((m) => ({
+    messages: prompt.map(m => ({
       role: m.role,
       content: m.content,
     })),
   });
 
-  // Salva messaggio utente
-  await supabase.from('messages').insert({
-    session_id,
-    role: 'user',
-    content: text,
-  });
+  let output = '';
 
-  // Preparazione streaming e raccolta contenuto
+  for await (const chunk of stream) {
+    if (chunk.type === 'content_block_delta') {
+      output += chunk.delta.text;
+    }
+  }
+
+  const insertResult = await supabase.from('messages').insert([
+    { session_id, role: 'user', content: text },
+    { session_id, role: 'assistant', content: output },
+  ]);
+
+  if (insertResult.error) {
+    console.error('Errore inserimento messaggi:', insertResult.error.message);
+  }
+
   const encoder = new TextEncoder();
-  let assistantReply = '';
-
   const readable = new ReadableStream({
     async start(controller) {
-      for await (const chunk of stream) {
-        if (chunk.type === 'content_block_delta') {
-          const text = chunk.delta.text;
-          assistantReply += text;
-          controller.enqueue(encoder.encode(text));
-        }
-      }
-
-      // Salva messaggio assistente
-      await supabase.from('messages').insert({
-        session_id,
-        role: 'assistant',
-        content: assistantReply,
-      });
-
+      controller.enqueue(encoder.encode(output));
       controller.close();
     },
   });
