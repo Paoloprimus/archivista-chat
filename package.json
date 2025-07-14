@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.5",
-    "ai": "latest",
+    "ai": "^2.2.22",
     "next": "15.0.0",
     "openai": "^4.24.1",
     "react": "^18.2.0",
