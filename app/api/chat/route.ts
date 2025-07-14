@@ -23,7 +23,7 @@ const history = data ?? [];  // ← se data è null, diventa array vuoto
   const systemPrompt = "Sei Archivista AI. Hai memoria persistente. Ricorda sempre tutto finché la sessione lo permette.";
 
   const stream = await anthropic.messages.stream({
-    model: 'claude-3-sonnet-20240229',
+    model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
     system: systemPrompt,
     messages: prompt.map((m) => ({
