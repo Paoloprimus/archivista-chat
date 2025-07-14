@@ -1,7 +1,7 @@
 export const runtime = 'edge';
 
 import { NextRequest } from 'next/server';
-import { createSupabaseClient } from '@/lib/supabase';
+import { createSupabaseClient } from '../../../lib/supabase';
 import { StreamingTextResponse } from 'ai';
 import Anthropic from '@anthropic-ai/sdk';
 
