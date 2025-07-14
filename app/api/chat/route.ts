@@ -12,12 +12,13 @@ export async function POST(req: NextRequest) {
   const { text, session_id } = await req.json();
   const supabase = createSupabaseClient();
 
-  const { data: history = [] } = await supabase
-    .from('messages')
-    .select('role, content')
-    .eq('session_id', session_id)
-    .order('created_at', { ascending: true });
+const { data, error } = await supabase
+  .from('messages')
+  .select('role, content')
+  .eq('session_id', session_id)
+  .order('created_at', { ascending: true });
 
+const history = data ?? [];  // ← se data è null, diventa array vuoto
   const prompt = [...history, { role: 'user', content: text }];
   const systemPrompt = "Sei Archivista AI. Hai memoria persistente. Ricorda sempre tutto finché la sessione lo permette.";
 
