@@ -12,13 +12,13 @@ export async function POST(req: NextRequest) {
   const { text, session_id } = await req.json();
   const supabase = createSupabaseClient();
 
-const { data, error } = await supabase
-  .from('messages')
-  .select('role, content')
-  .eq('session_id', session_id)
-  .order('created_at', { ascending: true });
+  const { data } = await supabase
+    .from('messages')
+    .select('role, content')
+    .eq('session_id', session_id)
+    .order('created_at', { ascending: true });
 
-const history = data ?? [];  // ← se data è null, diventa array vuoto
+  const history = data ?? [];
   const prompt = [...history, { role: 'user', content: text }];
   const systemPrompt = "Sei Archivista AI. Hai memoria persistente. Ricorda sempre tutto finché la sessione lo permette.";
 
@@ -32,35 +32,34 @@ const history = data ?? [];  // ← se data è null, diventa array vuoto
     })),
   });
 
-  // Salvataggio asincrono nel DB
-  (async () => {
-    await supabase.from('messages').insert([
-      { session_id, role: 'user', content: text },
-      { session_id, role: 'assistant', content: '' },
-    ]);
+  // Salva messaggio utente
+  await supabase.from('messages').insert({
+    session_id,
+    role: 'user',
+    content: text,
+  });
 
-    let output = '';
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta') {
-        output += chunk.delta.text;
-      }
-    }
-
-    await supabase
-      .from('messages')
-      .update({ content: output })
-      .match({ session_id, role: 'assistant', content: '' });
-  })();
-
-  // Risposta in streaming al client
+  // Preparazione streaming e raccolta contenuto
   const encoder = new TextEncoder();
+  let assistantReply = '';
+
   const readable = new ReadableStream({
     async start(controller) {
       for await (const chunk of stream) {
         if (chunk.type === 'content_block_delta') {
-          controller.enqueue(encoder.encode(chunk.delta.text));
+          const text = chunk.delta.text;
+          assistantReply += text;
+          controller.enqueue(encoder.encode(text));
         }
       }
+
+      // Salva messaggio assistente
+      await supabase.from('messages').insert({
+        session_id,
+        role: 'assistant',
+        content: assistantReply,
+      });
+
       controller.close();
     },
   });
