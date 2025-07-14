@@ -1,11 +1,11 @@
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createSupabaseClient } from '../../../lib/supabase';
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 export async function POST(req: NextRequest) {
@@ -26,35 +26,50 @@ export async function POST(req: NextRequest) {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
     system: systemPrompt,
-    messages: prompt.map(m => ({
+    messages: prompt.map((m) => ({
       role: m.role,
       content: m.content,
     })),
   });
 
-  let output = '';
+  // Salvataggio asincrono nel DB con log dettagliato
+  (async () => {
+    try {
+      const { error: insertError } = await supabase.from('messages').insert([
+        { session_id, role: 'user', content: text },
+        { session_id, role: 'assistant', content: '' },
+      ]);
 
-  for await (const chunk of stream) {
-    if (chunk.type === 'content_block_delta') {
-      output += chunk.delta.text;
+      if (insertError) throw insertError;
+
+      let output = '';
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta') {
+          output += chunk.delta.text;
+        }
+      }
+
+      const { error: updateError } = await supabase
+        .from('messages')
+        .update({ content: output })
+        .match({ session_id, role: 'assistant', content: '' });
+
+      if (updateError) throw updateError;
+
+    } catch (err) {
+      console.error('Errore inserimento messaggi:', err);
     }
-  }
+  })();
 
-  const insertResult = await supabase.from('messages').insert([
-    { session_id, role: 'user', content: text },
-    { session_id, role: 'assistant', content: output },
-  ]);
-
-  if (insertResult.error) {
-    console.error('Errore inserimento messaggi:', insertResult.error.message);
-  } else {
-  console.log('Messaggi salvati su Supabase con successo:', insertResult.data);
-  }
-
+  // Risposta in streaming al client
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
-      controller.enqueue(encoder.encode(output));
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta') {
+          controller.enqueue(encoder.encode(chunk.delta.text));
+        }
+      }
       controller.close();
     },
   });
