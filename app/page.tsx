@@ -1,64 +1,42 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
-export default function ChatPage() {
-  const [sid] = useState(() => crypto.randomUUID());
-  const [msgs, setMsgs] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+export default function HomePage() {
+  const [input, setInput] = useState('');
+  const [error, setError] = useState('');
+  const router = useRouter();
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [msgs]);
+  const PASSWORD = 'tuapasswordsegreta'; // 👈 cambia qui con la tua password
 
-  async function send() {
-    const text = inputRef.current?.value.trim();
-    if (!text) return;
-    inputRef.current!.value = '';
-    setMsgs(m => [...m, { role: 'user', content: text }]);
-
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify({ text, session_id: sid })
-    });
-
-    const reader = res.body!.getReader();
-    let assistant = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      assistant += new TextDecoder().decode(value);
-      setMsgs(m => [...m.filter(x => x.role !== 'assistant'), { role: 'assistant', content: assistant }]);
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (input.trim() === PASSWORD) {
+      router.push('/chat');
+    } else {
+      setError('Password errata');
     }
   }
 
   return (
-    <main className="flex flex-col h-screen bg-gray-50">
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {msgs.map((m, i) => (
-          <div key={i} className={`max-w-3xl mx-auto ${m.role === 'user' ? 'text-right' : 'text-left'}`}>
-            <p className={`inline-block px-4 py-3 rounded-2xl whitespace-pre-wrap shadow-sm text-sm
-              ${m.role === 'user' ? 'bg-blue-100 italic' : 'bg-white font-normal'}`}>
-              {m.content}
-            </p>
-          </div>
-        ))}
-        <div ref={scrollRef} />
-      </div>
-      <footer className="p-4 border-t bg-white">
-        <div className="max-w-3xl mx-auto flex gap-2">
-          <input
-            ref={inputRef}
-            className="flex-1 border border-gray-300 p-3 rounded-xl shadow-sm"
-            placeholder="Scrivi qui…"
-            onKeyDown={e => e.key === 'Enter' && send()}
-          />
-          <button
-            onClick={send}
-            className="bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800"
-          >Invia</button>
-        </div>
-      </footer>
+    <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-md space-y-4 w-full max-w-sm">
+        <h1 className="text-xl font-semibold text-center">Accesso Archivista</h1>
+        <input
+          type="password"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder="Inserisci la password"
+          className="w-full border rounded-lg p-2"
+        />
+        {error && <p className="text-red-600 text-sm">{error}</p>}
+        <button
+          type="submit"
+          className="w-full bg-black text-white py-2 rounded-lg hover:bg-gray-800"
+        >
+          Entra
+        </button>
+      </form>
     </main>
   );
 }
