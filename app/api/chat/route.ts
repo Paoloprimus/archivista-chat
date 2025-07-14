@@ -47,6 +47,8 @@ export async function POST(req: NextRequest) {
 
   if (insertResult.error) {
     console.error('Errore inserimento messaggi:', insertResult.error.message);
+  } else {
+  console.log('Messaggi salvati su Supabase con successo:', insertResult.data);
   }
 
   const encoder = new TextEncoder();
