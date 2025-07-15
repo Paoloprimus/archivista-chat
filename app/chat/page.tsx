@@ -1,29 +1,36 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
 export default function ChatPage() {
   /* ───────── session ID cross-device ───────── */
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [sid] = useState(() => {
-    const urlSid = searchParams.get('sid');
-    if (urlSid) {
-      if (typeof window !== 'undefined') localStorage.setItem('chat-session-id', urlSid);
-      return urlSid;
+    if (typeof window !== 'undefined') {
+      // 1) sid in query-string?
+      const params = new URLSearchParams(window.location.search);
+      const urlSid = params.get('sid');
+      if (urlSid) {
+        localStorage.setItem('chat-session-id', urlSid);
+        return urlSid;
+      }
+      // 2) sid già salvato?
+      const saved = localStorage.getItem('chat-session-id');
+      if (saved) {
+        router.replace(`/chat?sid=${saved}`);
+        return saved;
+      }
+      // 3) nuovo sid
+      const fresh = crypto.randomUUID();
+      localStorage.setItem('chat-session-id', fresh);
+      router.replace(`/chat?sid=${fresh}`);
+      return fresh;
     }
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('chat-session-id') : null;
-    if (saved) {
-      router.replace(`/chat?sid=${saved}`);
-      return saved;
-    }
-    const fresh = crypto.randomUUID();
-    if (typeof window !== 'undefined') localStorage.setItem('chat-session-id', fresh);
-    router.replace(`/chat?sid=${fresh}`);
-    return fresh;
+    // SSR fallback (non usato sul client)
+    return crypto.randomUUID();
   });
 
   /* ───────── stato & ref ───────── */
@@ -35,7 +42,7 @@ export default function ChatPage() {
   useEffect(() => {
     (async () => {
       const res = await fetch(`/api/chat/load?session_id=${sid}`);
-      const history = await res.json();
+      const history: Msg[] = await res.json();
       setMsgs(history);
     })();
   }, [sid]);
@@ -45,7 +52,7 @@ export default function ChatPage() {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs]);
 
-  /* invio messaggio */
+  /* invia un messaggio */
   async function send() {
     const text = inputRef.current?.value.trim();
     if (!text) return;
