@@ -19,11 +19,13 @@ export async function POST(req: NextRequest) {
   const supabase = createSupabaseClient();
 
   /* ----- 1. storico + summary cumulativo --------------------------------- */
-  const { data: history = [] } = await supabase
+  const { data: rows } = await supabase
     .from('messages')
     .select('role, content')
     .eq('session_id', session_id)
     .order('created_at', { ascending: true });
+
+  const history: { role: 'user' | 'assistant'; content: string }[] = rows ?? [];
 
   const { data: summRow } = await supabase
     .from('summaries')
@@ -32,6 +34,9 @@ export async function POST(req: NextRequest) {
     .single();
 
   let summary = summRow?.summary ?? '';
+
+  /* ----- (il resto del codice rimane invariato) -------------------------- */
+
 
   /* ----- 2. costruisci prompt -------------------------------------------- */
   let promptMsgs = [...history, { role: 'user', content: text }];
