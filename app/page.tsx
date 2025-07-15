@@ -20,9 +20,13 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-md space-y-4 w-full max-w-sm">
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white p-6 rounded-xl shadow-md space-y-4 w-full max-w-sm"
+      >
         <h1 className="text-xl font-semibold text-center">The Archivist</h1>
-        <br><h2 className="text-xl font-semibold text-center">Accesso</h2></br>
+        <h2 className="text-xl font-semibold text-center mt-2">Accesso</h2>
+
         <input
           type="password"
           value={input}
@@ -30,7 +34,9 @@ export default function HomePage() {
           placeholder="Inserisci password"
           className="w-full border rounded-lg p-2"
         />
+
         {error && <p className="text-red-600 text-sm">{error}</p>}
+
         <button
           type="submit"
           className="w-full bg-black text-white py-2 rounded-lg hover:bg-gray-800"
