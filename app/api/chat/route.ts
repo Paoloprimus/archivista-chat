@@ -10,9 +10,14 @@ const anthropic = new Anthropic({
 
 export async function POST(req: NextRequest) {
   const { text, session_id } = await req.json();
+
+  // 🆕 LOG di verifica immediato
+  console.log('🧪 session_id ricevuto:', session_id);
+  console.log('🧪 text ricevuto:', text);
+
   const supabase = createSupabaseClient();
 
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from('messages')
     .select('role, content')
     .eq('session_id', session_id)
@@ -20,7 +25,8 @@ export async function POST(req: NextRequest) {
 
   const history = data ?? [];
   const prompt = [...history, { role: 'user', content: text }];
-  const systemPrompt = "Sei Archivista AI. Hai memoria persistente. Ricorda sempre tutto finché la sessione lo permette.";
+  const systemPrompt =
+    'Sei Archivista AI. Hai memoria persistente. Ricorda sempre tutto finché la sessione lo permette.';
 
   const stream = await anthropic.messages.stream({
     model: 'claude-sonnet-4-20250514',
@@ -32,41 +38,38 @@ export async function POST(req: NextRequest) {
     })),
   });
 
-(async () => {
-  try {
-    console.log('✅ session_id:', session_id);
-    console.log('✅ text:', text);
+  // Salvataggio asincrono nel DB
+  (async () => {
+    try {
+      console.log('✅ session_id:', session_id);
+      console.log('✅ text:', text);
 
-    const { error: userError } = await supabase.from('messages').insert([
-      { session_id, role: 'user', content: text },
-    ]);
-
-    if (userError) {
-      console.error('❌ Errore inserimento user:', userError);
-      throw userError;
-    }
-
-    let output = '';
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta') {
-        output += chunk.delta.text;
+      const { error: userError } = await supabase.from('messages').insert([
+        { session_id, role: 'user', content: text },
+      ]);
+      if (userError) {
+        console.error('❌ Errore inserimento user:', userError);
+        throw userError;
       }
+
+      let output = '';
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta') {
+          output += chunk.delta.text;
+        }
+      }
+
+      const { error: assistantError } = await supabase.from('messages').insert([
+        { session_id, role: 'assistant', content: output },
+      ]);
+      if (assistantError) {
+        console.error('❌ Errore inserimento assistant:', assistantError);
+        throw assistantError;
+      }
+    } catch (err) {
+      console.error('🚨 Errore generale:', err);
     }
-
-    const { error: assistantError } = await supabase.from('messages').insert([
-      { session_id, role: 'assistant', content: output },
-    ]);
-
-    if (assistantError) {
-      console.error('❌ Errore inserimento assistant:', assistantError);
-      throw assistantError;
-    }
-
-  } catch (err) {
-    console.error('🚨 Errore generale:', err);
-  }
-})();
-
+  })();
 
   // Risposta in streaming al client
   const encoder = new TextEncoder();
