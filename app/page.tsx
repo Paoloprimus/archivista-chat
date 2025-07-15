@@ -21,12 +21,13 @@ export default function HomePage() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-md space-y-4 w-full max-w-sm">
-        <h1 className="text-xl font-semibold text-center">Accesso Archivista</h1>
+        <h1 className="text-xl font-semibold text-center">The Archivist</h1>
+        <br><h2 className="text-xl font-semibold text-center">Accesso</h2></br>
         <input
           type="password"
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder="Inserisci la password"
+          placeholder="Inserisci password"
           className="w-full border rounded-lg p-2"
         />
         {error && <p className="text-red-600 text-sm">{error}</p>}
