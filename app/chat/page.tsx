@@ -1,11 +1,31 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 
+type Msg = { role: 'user' | 'assistant'; content: string };
+
 export default function ChatPage() {
-  const [sid] = useState(() => crypto.randomUUID());
-  const [msgs, setMsgs] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  // ▸ 1. session_id fisso nel browser
+  const [sid] = useState(() => {
+    if (typeof window === 'undefined') return crypto.randomUUID();     // SSR safety
+    const saved = localStorage.getItem('chat-session-id');
+    if (saved) return saved;
+    const fresh = crypto.randomUUID();
+    localStorage.setItem('chat-session-id', fresh);
+    return fresh;
+  });
+
+  const [msgs, setMsgs] = useState<Msg[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // ▸ 2. carica lo storico all'apertura
+  useEffect(() => {
+    (async () => {
+      const res = await fetch(`/api/chat/load?session_id=${sid}`);
+      const history = await res.json();          // [{role, content}, ...]
+      setMsgs(history);
+    })();
+  }, [sid]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -19,7 +39,7 @@ export default function ChatPage() {
 
     const res = await fetch('/api/chat', {
       method: 'POST',
-      body: JSON.stringify({ text, session_id: sid })
+      body: JSON.stringify({ text, session_id: sid }),
     });
 
     const reader = res.body!.getReader();
@@ -29,14 +49,13 @@ export default function ChatPage() {
       if (done) break;
       assistant += new TextDecoder().decode(value);
       setMsgs(m => {
-    const last = m[m.length - 1];
-    if (last?.role === 'assistant') {
-      return [...m.slice(0, -1), { role: 'assistant', content: assistant }];
-    } else {
-      return [...m, { role: 'assistant', content: assistant }];
-    }
-  });
-
+        const last = m[m.length - 1];
+        if (last?.role === 'assistant') {
+          return [...m.slice(0, -1), { role: 'assistant', content: assistant }];
+        } else {
+          return [...m, { role: 'assistant', content: assistant }];
+        }
+      });
     }
   }
 
@@ -45,8 +64,10 @@ export default function ChatPage() {
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
         {msgs.map((m, i) => (
           <div key={i} className={`max-w-3xl mx-auto ${m.role === 'user' ? 'text-right' : 'text-left'}`}>
-            <p className={`inline-block px-4 py-3 rounded-2xl whitespace-pre-wrap shadow-sm text-sm
-              ${m.role === 'user' ? 'bg-blue-100 italic' : 'bg-white font-normal'}`}>
+            <p
+              className={`inline-block px-4 py-3 rounded-2xl whitespace-pre-wrap shadow-sm text-sm
+              ${m.role === 'user' ? 'bg-blue-100 italic' : 'bg-white font-normal'}`}
+            >
               {m.content}
             </p>
           </div>
@@ -64,7 +85,9 @@ export default function ChatPage() {
           <button
             onClick={send}
             className="bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800"
-          >Invia</button>
+          >
+            Invia
+          </button>
         </div>
       </footer>
     </main>
