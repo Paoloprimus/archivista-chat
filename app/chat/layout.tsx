@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
-import { Sidebar } from '@/components/Sidebar';
+import { Sidebar } from '../components/Sidebar';   // <— una sola directory su
+
 
 export default function ChatLayout({ children }: { children: ReactNode }) {
   return (
