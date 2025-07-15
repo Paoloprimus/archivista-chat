@@ -1,8 +1,8 @@
 // app/layout.tsx
 import './globals.css'; // 👈 IMPORTA LO STILE
 export const metadata = {
-  title: 'Archivista AI Chat',
-  description: 'Chat persistente con Claude',
+  title: 'The Archivist',
+  description: 'Chat Persistente',
 };
 
 export default function RootLayout({
