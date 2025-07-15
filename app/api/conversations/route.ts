@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseClient } from '../../lib/supabase';   
+import { createSupabaseClient } from '../../../lib/supabase';   
 
 /**
  * GET  /api/conversations      → lista ordinata per updated_at DESC
