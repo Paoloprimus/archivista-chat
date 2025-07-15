@@ -6,23 +6,35 @@ import { createSupabaseClient } from '../../../lib/supabase';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
-/*  parametri riassunto  */
-const HARD_LIMIT = 200_000;   // contesto massimo Sonnet-4
-const KEEP_LAST  = 8_000;     // token “grezzi” da tenere sempre
-const SUM_TOKENS = 1_000;     // token riservati al riassunto
+/* ---------------------------------------------------------------------
+   Parametri riassunto / gestione contesto
+--------------------------------------------------------------------- */
+const HARD_LIMIT = 200_000;  // token massimi Sonnet‑4
+const KEEP_LAST  = 8_000;    // token da tenere intatti in coda
+const SUM_TOKENS = 1_000;    // token riservati al riassunto
 
-/*  funzione di stima token ultra-rapida  */
+// stima super‑veloce dei token (≈ 4 char ≈ 1 token)
 const countTok = (s: string) => Math.ceil(s.length / 4);
 
+/* ---------------------------------------------------------------------
+   POST /api/chat  – streaming verso Claude 4 Sonnet
+   Body atteso: { text: string, conversation_id: string }
+   NB: per retro‑compatibilità accetta anche { session_id }
+--------------------------------------------------------------------- */
 export async function POST(req: NextRequest) {
-  const { text, session_id } = await req.json();
+  const { text, conversation_id, session_id } = await req.json();
+  const cid: string | undefined = conversation_id ?? session_id; // fallback
+
+  if (!text || !cid)
+    return new Response('text o conversation_id mancante', { status: 400 });
+
   const supabase = createSupabaseClient();
 
-  /* ----- 1. storico + summary cumulativo --------------------------------- */
+  /* ----- 1. storico + summary cumulativo ----------------------------- */
   const { data: rows } = await supabase
     .from('messages')
     .select('role, content')
-    .eq('session_id', session_id)
+    .eq('conversation_id', cid)
     .order('created_at', { ascending: true });
 
   const history: { role: 'user' | 'assistant'; content: string }[] = rows ?? [];
@@ -30,23 +42,20 @@ export async function POST(req: NextRequest) {
   const { data: summRow } = await supabase
     .from('summaries')
     .select('summary')
-    .eq('session_id', session_id)
+    .eq('conversation_id', cid)
     .single();
 
   let summary = summRow?.summary ?? '';
 
-  /* ----- (il resto del codice rimane invariato) -------------------------- */
-
-
-  /* ----- 2. costruisci prompt -------------------------------------------- */
+  /* ----- 2. costruisci prompt ---------------------------------------- */
   let promptMsgs = [...history, { role: 'user', content: text }];
   let tokens = promptMsgs.reduce((n, m) => n + countTok(m.content), 0);
 
   if (tokens > KEEP_LAST) {
-    // prendi messaggi da comprimere
+    // porzione da comprimere
     const toSummarize = promptMsgs.splice(0, promptMsgs.length - KEEP_LAST);
 
-    // chiedi un breve riassunto a Haiku
+    // chiedi riassunto a Haiku (cheap)
     const haiku = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: SUM_TOKENS,
@@ -67,8 +76,10 @@ export async function POST(req: NextRequest) {
       ? `${summary}\n\n[Riassunto aggiuntivo]\n${newSummary}`
       : newSummary;
 
-    // salva / aggiorna la tabella summaries
-    await supabase.from('summaries').upsert({ session_id, summary });
+    // upsert tabella summaries
+    await supabase
+      .from('summaries')
+      .upsert({ conversation_id: cid, summary });
 
     // prompt finale
     promptMsgs = [
@@ -76,27 +87,25 @@ export async function POST(req: NextRequest) {
       ...promptMsgs,
     ];
 
-    // ricalcola token totali
     tokens = promptMsgs.reduce((n, m) => n + countTok(m.content), 0);
   }
 
-  if (tokens > HARD_LIMIT) {
+  if (tokens > HARD_LIMIT)
     return new Response('Sessione troppo lunga: aprine una nuova.', { status: 400 });
-  }
 
-  /* ----- 3. streaming a Sonnet-4 ---------------------------------------- */
+  /* ----- 3. streaming a Sonnet‑4 ------------------------------------ */
   const stream = await anthropic.messages.stream({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
     messages: promptMsgs as any,
   });
 
-  /* ----- 4. salvataggio async ------------------------------------------- */
+  /* ----- 4. salvataggio async --------------------------------------- */
   (async () => {
-    // salva messaggio user
+    // salva messaggio utente
     const { error: userErr } = await supabase
       .from('messages')
-      .insert({ session_id, role: 'user', content: text });
+      .insert({ conversation_id: cid, role: 'user', content: text });
     if (userErr) console.error('insert user →', userErr.message);
 
     // accumula risposta assistant
@@ -108,11 +117,18 @@ export async function POST(req: NextRequest) {
     // salva messaggio assistant
     const { error: aiErr } = await supabase
       .from('messages')
-      .insert({ session_id, role: 'assistant', content: output });
+      .insert({ conversation_id: cid, role: 'assistant', content: output });
     if (aiErr) console.error('insert assistant →', aiErr.message);
+
+    // aggiorna updated_at nella tabella conversations
+    const { error: convErr } = await supabase
+      .from('conversations')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', cid);
+    if (convErr) console.error('update conversations →', convErr.message);
   })();
 
-  /* ----- 5. risposta stream al client ----------------------------------- */
+  /* ----- 5. risposta stream al client -------------------------------- */
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
