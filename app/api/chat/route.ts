@@ -2,7 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { createSupabaseClient } from '../../lib/supabase'; 
+import { createSupabaseClient } from '../../../lib/supabase'; 
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
